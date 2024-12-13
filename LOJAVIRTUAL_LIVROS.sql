@@ -1,4 +1,4 @@
-CREATE SCHEMA LojaVirtual;
+CREATE database loja;
 
 CREATE TABLE Livro (
     ID INT AUTO_INCREMENT PRIMARY KEY,
@@ -15,17 +15,17 @@ CREATE TABLE Cliente (
     Email VARCHAR(255) UNIQUE NOT NULL,
     Data_Nascimento DATE,
     Endereco TEXT,
-    Telefone VARCHAR(20)
+    Telefone VARCHAR(40)
 );
 
-CREATE TABLE LojaVirtual.Pedido (
+CREATE TABLE Pedido (
     ID INT AUTO_INCREMENT PRIMARY KEY,
     ClienteID INT NOT NULL,
     Data_Pedido TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     Status ENUM('Pendente', 'Pago', 'Cancelado', 'Entregue') DEFAULT 'Pendente',
     Valor_Total DECIMAL(10, 2),
     Forma_Pagamento VARCHAR(50),
-    FOREIGN KEY (ClienteID) REFERENCES LojaVirtual.Cliente(ID)
+    FOREIGN KEY (ClienteID) REFERENCES Cliente(ID)
 );
 
 CREATE TABLE ItemPedido (
@@ -34,86 +34,108 @@ CREATE TABLE ItemPedido (
     PedidoID INT,
     LivroID INT,  -- Ajustado para LivroID em vez de LivroDigitalID
     Quantidade INT DEFAULT 1,
-    FOREIGN KEY (PedidoID) REFERENCES LojaVirtual.Pedido(ID),
-    FOREIGN KEY (LivroID) REFERENCES LojaVirtual.Livro(ID)
+    FOREIGN KEY (PedidoID) REFERENCES Pedido(ID),
+    FOREIGN KEY (LivroID) REFERENCES Livro(ID)
 );
 
 
 
 
+SELECT * FROM Livro;
 
-DROP TABLE CLIENTE;
-DROP TABLE ITEMPEDIDO;
-DROP TABLE LIVRO;
-DROP TABLE PEDIDO;
+SELECT * FROM Cliente;
+
+SELECT * FROM Pedido;
+SELECT * FROM ItemPedido;
+
+TRUNCATE TABLE ItemPedido;
+TRUNCATE TABLE Pedido;
+TRUNCATE TABLE Cliente;
+TRUNCATE TABLE Livro;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+
+SELECT Pedido.ID AS PedidoID, Cliente.Nome AS ClienteNome, Pedido.Data_Pedido, Pedido.Status, Pedido.Valor_Total
+FROM Pedido
+JOIN Cliente ON Pedido.ClienteID = Cliente.ID;
+
+SELECT ItemPedido.ID AS ItemPedidoID, Pedido.ID AS PedidoID, Livro.Titulo AS LivroTitulo, ItemPedido.Quantidade, ItemPedido.Valor_Total
+FROM ItemPedido
+JOIN Pedido ON ItemPedido.PedidoID = Pedido.ID
+JOIN Livro ON ItemPedido.LivroID = Livro.ID;
+
+
+
+SELECT Cliente.Nome AS ClienteNome, COUNT(Pedido.ID) AS TotalPedidos
+FROM Pedido
+JOIN Cliente ON Pedido.ClienteID = Cliente.ID
+GROUP BY Cliente.Nome
+ORDER BY TotalPedidos DESC;
+
+SELECT Livro.Titulo AS LivroTitulo, SUM(ItemPedido.Quantidade) AS TotalVendidos, SUM(ItemPedido.Valor_Total) AS ReceitaTotal
+FROM ItemPedido
+JOIN Livro ON ItemPedido.LivroID = Livro.ID
+GROUP BY Livro.Titulo
+ORDER BY ReceitaTotal DESC;
 
 DELIMITER $$
 
-CREATE PROCEDURE InserirDados()
+CREATE PROCEDURE InserirPedido(
+    IN p_cliente_id INT, -- ID do cliente que está fazendo o pedido
+    IN p_status ENUM('Pendente', 'Pago', 'Cancelado', 'Entregue'), -- Status do pedido
+    IN p_valor_total DECIMAL(10, 2), -- Valor total do pedido
+    IN p_forma_pagamento VARCHAR(50), -- Forma de pagamento
+    IN p_itens JSON -- Itens do pedido em formato JSON
+)
 BEGIN
-    DECLARE i INT DEFAULT 1;
-    DECLARE j INT;
-    DECLARE pedidoID INT;
+    DECLARE pedido_id INT; -- ID do pedido gerado
+    DECLARE livro_id INT; -- ID do livro
+    DECLARE quantidade INT; -- Quantidade de itens do livro
+    DECLARE valor_item DECIMAL(10, 2); -- Valor do item
+    DECLARE done INT DEFAULT 0; -- Variável para sinalizar o final do cursor
 
-    -- Inserir 60 Clientes
-    WHILE i <= 60 DO
-        INSERT INTO LojaVirtual.Cliente (Nome, Email, Data_Nascimento, Endereco, Telefone)
-        VALUES (CONCAT('Cliente', i), CONCAT('cliente', i, FLOOR(1 + RAND() * 10000), '@exemplo.com'), '1990-01-01', CONCAT('Endereco ', i), CONCAT('Telefone ', i));
-        SET i = i + 1;
-    END WHILE;
+    -- Declaração do cursor para processar os itens
+    DECLARE item_cursor CURSOR FOR 
+        SELECT jt.LivroID, jt.Quantidade, jt.ValorItem 
+        FROM JSON_TABLE(
+            p_itens, '$[*]'
+            COLUMNS(
+                LivroID INT PATH '$.livro_id',
+                Quantidade INT PATH '$.quantidade',
+                ValorItem DECIMAL(10, 2) PATH '$.valor_item'
+            )
+        ) AS jt; -- Adicionando o alias 'jt' à função JSON_TABLE
 
-    SET i = 1;
+    -- Handler para detectar o final do cursor
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = 1;
 
-    -- Inserir 60 Livros
-    WHILE i <= 60 DO
-        INSERT INTO LojaVirtual.Livro (Titulo, Autor, Preco, Estoque, Formato)
-        VALUES (CONCAT('Livro ', i), CONCAT('Autor ', i), 50.00, FLOOR(RAND() * 100), 'digital');
-        SET i = i + 1;
-    END WHILE;
+    -- Inicia a transação
+    START TRANSACTION;
 
-    SET i = 1;
+    -- Inserir o pedido na tabela Pedido
+    INSERT INTO Pedido (ClienteID, Status, Valor_Total, Forma_Pagamento)
+    VALUES (p_cliente_id, p_status, p_valor_total, p_forma_pagamento);
 
-    -- Inserir 100 Pedidos
-    WHILE i <= 100 DO
-        SET j = 1;
-        INSERT INTO LojaVirtual.Pedido (ClienteID, Status, Valor_Total, Forma_Pagamento)
-        VALUES (FLOOR(1 + RAND() * 60), 'Pago', 100.00, 'Cartão de Crédito');
-        SET pedidoID = LAST_INSERT_ID();
+    -- Obter o ID do pedido recém-inserido
+    SET pedido_id = LAST_INSERT_ID();
 
-        -- Inserir pelo menos 2 Itens por Pedido
-        WHILE j <= 2 DO
-            INSERT INTO LojaVirtual.ItemPedido (Valor_Total, PedidoID, LivroID, Quantidade)
-            VALUES (50.00, pedidoID, FLOOR(1 + RAND() * 60), 1);
-            SET j = j + 1;
-        END WHILE;
-        SET i = i + 1;
-    END WHILE;
+    -- Processar os itens do pedido
+    OPEN item_cursor;
+    item_loop: LOOP
+        FETCH item_cursor INTO livro_id, quantidade, valor_item;
+        IF done THEN
+            LEAVE item_loop;
+        END IF;
+
+        -- Inserir cada item na tabela ItemPedido
+        INSERT INTO ItemPedido (Valor_Total, PedidoID, LivroID, Quantidade)
+        VALUES (valor_item, pedido_id, livro_id, quantidade);
+    END LOOP;
+    CLOSE item_cursor;
+
+    -- Finalizar a transação
+    COMMIT;
 END$$
 
 DELIMITER ;
-
-
-
-
-DROP PROCEDURE IF EXISTS InserirDados;
-
-
-SHOW INDEX FROM LivroDigital;
-
-
-ALTER TABLE LojaVirtual.LivroDigital
-DROP INDEX ISBN;
-
-
-SHOW INDEX FROM LojaVirtual.LivroDigital;
-ALTER TABLE LivroDigital
-MODIFY COLUMN ISBN VARCHAR(20) UNIQUE;
-
-ALTER TABLE LojaVirtual.LivroDigital
-MODIFY COLUMN ISBN VARCHAR(255) UNIQUE;
-
-
-CALL InserirDados();
-
-
-
