@@ -1,13 +1,15 @@
 CREATE database loja;
 
 CREATE TABLE Livro (
-    ID INT AUTO_INCREMENT PRIMARY KEY,
-    Titulo VARCHAR(255) NOT NULL,
-    Autor VARCHAR(255) NOT NULL,
-    Preco DECIMAL(10, 2) NOT NULL,
-    Estoque INT CHECK (estoque >= 0),
-    Formato ENUM('digital', 'fisico')
+    ID INT AUTO_INCREMENT PRIMARY KEY, 
+    Titulo VARCHAR(255) NOT NULL,      
+    Autor VARCHAR(255) NOT NULL,      
+    Preco DECIMAL(10, 2) NOT NULL CHECK (Preco >= 0), 
+    Estoque INT CHECK (Estoque >= 0), 
+    Formato ENUM('fisico')
 );
+
+
 
 CREATE TABLE Cliente (
     ID INT AUTO_INCREMENT PRIMARY KEY,
@@ -39,45 +41,6 @@ CREATE TABLE ItemPedido (
 );
 
 
-
-
-SELECT * FROM Livro;
-
-SELECT * FROM Cliente;
-
-SELECT * FROM Pedido;
-SELECT * FROM ItemPedido;
-
-TRUNCATE TABLE ItemPedido;
-TRUNCATE TABLE Pedido;
-TRUNCATE TABLE Cliente;
-TRUNCATE TABLE Livro;
-
-SET FOREIGN_KEY_CHECKS = 1;
-
-
-SELECT Pedido.ID AS PedidoID, Cliente.Nome AS ClienteNome, Pedido.Data_Pedido, Pedido.Status, Pedido.Valor_Total
-FROM Pedido
-JOIN Cliente ON Pedido.ClienteID = Cliente.ID;
-
-SELECT ItemPedido.ID AS ItemPedidoID, Pedido.ID AS PedidoID, Livro.Titulo AS LivroTitulo, ItemPedido.Quantidade, ItemPedido.Valor_Total
-FROM ItemPedido
-JOIN Pedido ON ItemPedido.PedidoID = Pedido.ID
-JOIN Livro ON ItemPedido.LivroID = Livro.ID;
-
-
-
-SELECT Cliente.Nome AS ClienteNome, COUNT(Pedido.ID) AS TotalPedidos
-FROM Pedido
-JOIN Cliente ON Pedido.ClienteID = Cliente.ID
-GROUP BY Cliente.Nome
-ORDER BY TotalPedidos DESC;
-
-SELECT Livro.Titulo AS LivroTitulo, SUM(ItemPedido.Quantidade) AS TotalVendidos, SUM(ItemPedido.Valor_Total) AS ReceitaTotal
-FROM ItemPedido
-JOIN Livro ON ItemPedido.LivroID = Livro.ID
-GROUP BY Livro.Titulo
-ORDER BY ReceitaTotal DESC;
 
 DELIMITER $$
 
